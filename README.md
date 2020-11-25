@@ -2,7 +2,8 @@
 
 ## About the project  
 Automatically detect a face, crop it, create multiple random filters and then keep showing them all for a couple of seconds. After that, repeat.  
-Build in C++ and OpenCV. Free to use.
+Build in C++ and OpenCV. Free to use, but code is not clean and well designed.
+![logo](src/logo.png)
 
 ## Build OpenCV (from official [tutorial](https://docs.opencv.org/4.5.0/d7/d9f/tutorial_linux_install.html))
 
@@ -37,8 +38,8 @@ make
 ## Run creative-face
 
 ``` bash
-./creative-face [-width=640] [-height=480] [-cameraWidth=640] [-cameraHeight=480] [-col=3] [-row=3] [-time=3]
-
+./creative-face [-width=640] [-height=480] [-cameraWidth=640] [-cameraHeight=480] [-col=2] [-row=2] [-time=3]
+```
 >- width: width of the canvas (default: 640)
 >- height: height of the canvas (default: 480)
 >- cameraWidth: width of image captured by camera (default: 640)
@@ -46,4 +47,4 @@ make
 >- col: number of filtered images in colum (default: 2)
 >- row: number of filtered images in row (default: 2)
 >- time: time in seconds between the images (default: 3)
-```
+>- faceFactor: face detection area multiplicator (default: 0.4)

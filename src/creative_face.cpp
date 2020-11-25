@@ -1,3 +1,7 @@
+// Denis Kotnik, november 2020
+// https://www.kotnik.si
+// Code not clean.
+
 #include <stdio.h>
 #include <opencv2/opencv.hpp>
 #include <unistd.h>
@@ -14,230 +18,213 @@ using namespace cv;
 
 #define WINDOW_NAME "Creative Face"
 
-
-////////////////////////////////////////////////////////////////////
-// Nastavitve
-////////////////////////////////////////////////////////////////////
+// Config
 int secondsOfShowingImage = 3;
-// Za koliko povecamo izrez okoli obraza, katerega zazna face detection algoritem.
+// Face detection area multiplicator
 double faceFactor = 0.4;
-// Platno = mreza slik = nColumns * nRows.
 int canvasWidth = 768;
 int canvasHeight = 768;
-int nColumns = 2; // Koliko slik bo v eni vrstici platna.
-int nRows = 2; // Koliko slik bo v enem stolpcu platna.
-// Odvisno od kamere - to vpliva na performance.
+int nImagesInRow = 2;
+int nImagesInColumn = 2;
+// Has impact on performance
 int imageCaptureWidth = 1024;
 int imageCaptureHeight = 768;
-////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////
 
 CascadeClassifier cascade;
 RNG rng(1);
 
 
-// Funkcija za efekte.
+// Function for effects
 Mat warhol(Mat src, int K, int blurSize) {
-  Mat img, bestLabels, centers, clustered;
-  Vec3b *colors = new Vec3b[K];
+	Mat img, bestLabels, centers, clustered;
+	Vec3b *colors = new Vec3b[K];
 
-  //Blur the image
-  blur(src, img, Size(blurSize, blurSize));
+	// Blur the image
+	blur(src, img, Size(blurSize, blurSize));
 
-  //Create samples
-  Mat samples = img.reshape(1, img.rows * img.cols);
-  samples.convertTo(samples, CV_32F);
+	// Create samples
+	Mat samples = img.reshape(1, img.rows * img.cols);
+	samples.convertTo(samples, CV_32F);
 
-  //K-Means clustering
-  kmeans(samples, K, bestLabels, TermCriteria( TermCriteria::EPS+TermCriteria::COUNT, 10, 1.0), 3, KMEANS_PP_CENTERS, centers);
+	// K-Means clustering
+	kmeans(samples, K, bestLabels, TermCriteria(TermCriteria::EPS+TermCriteria::COUNT, 10, 1.0), 3, KMEANS_PP_CENTERS, centers);
 
-  //Select a random palette
-  for(int i = 0; i < K; i ++) {
-    Vec3b color = Vec3b( rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255) );
-    colors[i] = color;
-  }
+	// Select a random palette
+	for(int i = 0; i < K; i ++) {
+		Vec3b color = Vec3b(rng.uniform(0, 255), rng.uniform(0, 255), rng.uniform(0, 255));
+		colors[i] = color;
+	}
 
-  //Draw the new image
-  clustered = Mat(img.size(), img.type());
-  for(int i = 0; i < img.cols*img.rows; i++) {
-    clustered.at<Vec3b>(i/img.cols, i%img.cols) = colors[bestLabels.at<int>(0,i)];
-  }
+	// Draw the new image
+	clustered = Mat(img.size(), img.type());
+	for(int i = 0; i < img.cols * img.rows; i++) {
+		clustered.at<Vec3b>(i / img.cols, i % img.cols) = colors[bestLabels.at<int>(0, i)];
+	}
 
   return clustered;
 }
 
-
-// Funkcija, ki naredi platno iz vecih slik (rows * cols).
+// Make panel from multiple images (rows * cols)
 Mat makePanel(Mat src, int rows, int cols) {
-  Mat dst = Mat(src.rows * rows, src.cols * cols, src.type());
-  Mat trgt;
-  for(int i = 0; i < rows; i ++) {
-    for (int j = 0; j < cols; j ++) {
-      warhol(src, 8, 5).copyTo(dst(Rect(j * src.cols, i * src.rows, src.cols, src.rows))); //8
-      //trgt = warhol(src, 8, 5);
-    }
-  }
-  return dst;
+	Mat dst = Mat(src.rows * rows, src.cols * cols, src.type());
+	Mat trgt;
+	for(int i = 0; i < rows; i ++) {
+		for (int j = 0; j < cols; j++) {
+			warhol(src, 8, 5).copyTo(dst(Rect(j * src.cols, i * src.rows, src.cols, src.rows)));
+		}
+	}
+	return dst;
 }
 
-int main(int argc, char** argv )
-{
-  CommandLineParser parser(argc, argv,
-    "{width          |     | Sirina platna (default: 768).   }"
-    "{height         |     | Visina platna (default: 768).   }"
-    "{cameraWidth    |     | Sirina zajemanja slik s kamere (default: 1024). }"
-    "{cameraHeight   |     | Visina zajemanja slik s kamere (default: 768). }"
-    "{col            |     | Stevilo slik bo v eni vrstici platna (default: 1). }"
-    "{row            |     | Stevilo slik bo v enem stolpcu platna (default: 1). }"
-    "{time           |     | Cas med iskani obrazov (prikazovanjem enega obraza) [sekunde] (default: 15). }"
-    "{faceFactor     |     | Faktor povecanja slike okoli obraza (default: 0.4). }" );
+int main(int argc, char** argv ) {
+	CommandLineParser parser(argc, argv,
+		"{width          |     | Width of the canvas (default: 768).   }"
+		"{height         |     | Height of the canvas (default: 768).   }"
+		"{cameraWidth    |     | Width of image captured by camera (default: 1024). }"
+		"{cameraHeight   |     | Height of image captured by camera (default: 768). }"
+		"{col            |     | Number of filtered images in colum (default: 2). }"
+		"{row            |     | Number of filtered images in row (default: 2). }"
+		"{time           |     | Time in seconds between the images (default: 3). }"
+		"{faceFactor     |     | Face detection area multiplicator (default: 0.4). }"
+	);
 
-  parser.about("\navtor projekta: Denis Kotnik\n\nReinplementacija 15 sekund slave na Raspberry Pi\n\n");
-  parser.printMessage();
+	parser.about("\nAuthor: Denis Kotnik\n");
+	parser.printMessage();
 
-  if (parser.has("width"))
-  {
-    canvasWidth = parser.get<int>("width");
-  }
-  if (parser.has("height"))
-  {
-    canvasHeight = parser.get<int>("height");
-  }
-  if (parser.has("cameraWidth"))
-  {
-      imageCaptureWidth = parser.get<int>("cameraWidth");
-  }
-  if (parser.has("cameraHeight"))
-  {
-      imageCaptureHeight = parser.get<int>("cameraHeight");
-  }
-  if (parser.has("col"))
-  {
-      nColumns = parser.get<int>("col");
-  }
-  if (parser.has("row"))
-  {
-      nRows = parser.get<int>("row");
-  }
-  if (parser.has("time"))
-  {
-      secondsOfShowingImage = parser.get<int>("time");
-  }
-  if (parser.has("faceFactor"))
-  {
-      faceFactor = parser.get<double>("faceFactor");
-  }
+	if (parser.has("width")) {
+		canvasWidth = parser.get<int>("width");
+	}
+	if (parser.has("height")) {
+		canvasHeight = parser.get<int>("height");
+	}
+	if (parser.has("cameraWidth")) {
+		imageCaptureWidth = parser.get<int>("cameraWidth");
+	}
+	if (parser.has("cameraHeight")) {
+		imageCaptureHeight = parser.get<int>("cameraHeight");
+	}
+	if (parser.has("col")) {
+		nImagesInRow = parser.get<int>("col");
+	}
+	if (parser.has("row")) {
+		nImagesInColumn = parser.get<int>("row");
+	}
+	if (parser.has("time")) {
+		secondsOfShowingImage = parser.get<int>("time");
+	}
+	if (parser.has("faceFactor")) {
+		faceFactor = parser.get<double>("faceFactor");
+	}
 
-  ////////////////////////////////////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////
-  // Na zacetku prikazemo sliko Marilyn Monroe.
-  Mat logo = imread("./blank_face.png");
-  if (!logo.empty()) {
-    resize(logo, logo, Size(canvasWidth, canvasHeight));
-    imshow(WINDOW_NAME, logo);
-  }
+	////////////////////////////////////////////////////////////////////
+	////////////////////////////////////////////////////////////////////
 
-  // Nalozimo datoteko z znacilkami obraza.
-  if( !cascade.load("./face_cascade.xml") ) {
-      cerr << "NAPAKA: ni mogoce naloziti datoteke 'classifier cascade'!" << endl;
-      return -1;
-  }
+	// Show blank image at the beginning
+	Mat logo = imread("./logo.png");
+	if (!logo.empty()) {
+		resize(logo, logo, Size(canvasWidth, canvasHeight));
+		imshow(WINDOW_NAME, logo);
+	}
 
-  VideoCapture camera(0); // ID kamere.
- 
-  if (!camera.isOpened()) { // Ce do kamere ni mogoce dostopati.
-    cerr << "NAPAKA: do kamere ni mogoce dostopati!" << endl;
-    return -1;
-  }
+	// Load data with face features info
+	if(!cascade.load("./face_cascade.xml")) {
+		cerr << "ERROR: can not find face cascade file!" << endl;
+		return -1;
+	}
 
-  // Nastavimo sirino in visino zajemanja slik.
-  camera.set(CAP_PROP_FRAME_WIDTH, imageCaptureWidth);
-  camera.set(CAP_PROP_FRAME_HEIGHT, imageCaptureHeight);
+	VideoCapture camera(0); // Camera ID
 
-  Mat frame, gray, crop, slikaObraza;
-  vector<Rect> faces;
-  ////////////////////////////////////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////
-  while (true) {
-    // Hack za Raspberry Pi oz. Linux OS, ker se v buffer gonilnika za kamero vedno nalozi 5 slik.
-    for (int i = 0; i < 5; i++) {
-      camera.read(frame);
-      frame.copyTo(crop);
-    }
+	if (!camera.isOpened()) {
+		cerr << "ERROR: no camera detected!" << endl;
+		return -1;
+	}
 
-    cvtColor(frame, gray, COLOR_BGR2GRAY); // Pretvorimo v crno belo sliko.
+	// Set height and width of image capture from camera
+	camera.set(CAP_PROP_FRAME_WIDTH, imageCaptureWidth);
+	camera.set(CAP_PROP_FRAME_HEIGHT, imageCaptureHeight);
 
-    double t = 0;
-    t = (double)getTickCount();
+	Mat frame, gray, crop, imageOfFace;
+	vector<Rect> faces;
 
-    faces.clear(); // Izpraznimo vektor z obrazi.
-    // Poiscemo vse obraze.
-    cascade.detectMultiScale(gray, faces,
-        1.1, 3, CASCADE_FIND_BIGGEST_OBJECT | CASCADE_DO_ROUGH_SEARCH | CASCADE_SCALE_IMAGE,
-        Size(60, 60), Size(180, 180) );
-
-    t = (double)getTickCount() - t;
-    cout << format("Iskanje obrazov. Cas procesiranja za eno sliko: %.2f sekund.", 
-      t / (double)getTickFrequency()) << endl;
-
-    Rect najvecjiObraz(Point(0,0), Point(0,0));
-    double najvecjaVelikost = 0;
-    // Gremo cez vse obraze, ki so bili detektirani.
-    for (unsigned int i = 0; i < faces.size(); i++) {
-        Rect r = faces[i];
-
-        // Okoli vsakega obraza izrisemo pravokotnik.
-        //rectangle(frame, Point(round(r.x), round(r.y)),
-                  //Point(round((r.x + r.width-1)), round((r.y + r.height-1))),
-                  //Scalar(255, 255, 255), 3, 8, 0);
-
-        // Poiscemo najvecji obraz na sliki.
-        double velikost = r.width * r.height;
-        if (velikost > najvecjaVelikost) {
-          najvecjaVelikost = velikost;
-          
-          najvecjiObraz.x = r.x;
-          najvecjiObraz.y = r.y;
-          najvecjiObraz.width = r.width;
-          najvecjiObraz.height = r.height;
-
-          // Povecujem okno okoli obraza.
-          while (najvecjiObraz.x > r.x - r.width * faceFactor && najvecjiObraz.x > 0){
-            najvecjiObraz.x -= 1;
-          }
-          while (najvecjiObraz.y > r.y - r.height * faceFactor && najvecjiObraz.y > 0){
-            najvecjiObraz.y -= 1;
-          }
-          while(najvecjiObraz.x + najvecjiObraz.width < r.x + r.width + r.width * faceFactor 
-            && najvecjiObraz.x + najvecjiObraz.width < frame.cols) {
-            najvecjiObraz.width += 1;
-          }
-          while(najvecjiObraz.y + najvecjiObraz.height < r.y + r.height + r.height * faceFactor 
-            && najvecjiObraz.y + najvecjiObraz.height < frame.rows) {
-            najvecjiObraz.height += 1;
-          }
-        }
-    }
-    // Ce je obraz najden
-    if (najvecjaVelikost != 0) {
-        crop = crop(najvecjiObraz); // Sliko obrezemo.
-
-        // Spremenimo velikost slike (platno = mreza slik = nColumns * nRows)
-        resize(crop, crop, Size(canvasWidth / nColumns, canvasHeight / nRows));
-
-        // Sliko obogatimo z efekti.
-        crop = makePanel(crop, nRows, nColumns);
+	////////////////////////////////////////////////////////////////////
+	////////////////////////////////////////////////////////////////////
 	
-        imshow(WINDOW_NAME, crop); // Prikazemo obrezano in obogateno sliko.
+	while (true) {
+		// Hack/workaround for Raspberry Pi / Linux OS, because there is always 5 images in the buffer of the camera.
+		for (int i = 0; i < 5; i++) {
+			camera.read(frame);
+			frame.copyTo(crop);
+		}
 
-        usleep(1000 * 1000 * secondsOfShowingImage); // Pocakaj.
-    }
+		// Convert to black and white
+		cvtColor(frame, gray, COLOR_BGR2GRAY);
 
-    // To potrebujemo obvezno, drugace se na Raspberry Pi okna ne prikazujejo.
-    if (waitKey(10) > 0) {
-      break;
-    }
-  }
-  return 0;
+		double t = 0;
+		t = (double)getTickCount();
 
+		// Clear vector with faces
+		faces.clear();
+		// Detect all faces.
+		cascade.detectMultiScale(gray, faces, 1.1, 3, CASCADE_FIND_BIGGEST_OBJECT | CASCADE_DO_ROUGH_SEARCH | CASCADE_SCALE_IMAGE, Size(60, 60), Size(180, 180));
+
+		t = (double)getTickCount() - t;
+		cout << format("Face detection. Time for processing single image required: %.2f seconds.", t / (double)getTickFrequency()) << endl;
+
+		Rect biggestFace(Point(0,0), Point(0,0));
+		double biggestSize = 0;
+		
+		// For all detected faces
+		for (unsigned int i = 0; i < faces.size(); i++) {
+			Rect r = faces[i];
+
+			// Draw rectangle around a face
+			// rectangle(frame, Point(round(r.x), round(r.y)), Point(round((r.x + r.width-1)), round((r.y + r.height-1))), Scalar(255, 255, 255), 3, 8, 0);
+
+			// Search for the biggest face in the image
+			double size = r.width * r.height;
+			if (size > biggestSize) {
+				biggestSize = size;
+				
+				biggestFace.x = r.x;
+				biggestFace.y = r.y;
+				biggestFace.width = r.width;
+				biggestFace.height = r.height;
+
+				// Increase the size of the window around the face
+				while (biggestFace.x > r.x - r.width * faceFactor && biggestFace.x > 0){
+					biggestFace.x -= 1;
+				}
+				while (biggestFace.y > r.y - r.height * faceFactor && biggestFace.y > 0){
+					biggestFace.y -= 1;
+				}
+				while(biggestFace.x + biggestFace.width < r.x + r.width + r.width * faceFactor && biggestFace.x + biggestFace.width < frame.cols) {
+					biggestFace.width += 1;
+				}
+				while(biggestFace.y + biggestFace.height < r.y + r.height + r.height * faceFactor && biggestFace.y + biggestFace.height < frame.rows) {
+					biggestFace.height += 1;
+				}
+			}
+		}
+
+		// If face has been found
+		if (biggestSize != 0) {
+			crop = crop(biggestFace);
+
+			// canvas = nImagesInRow * nImagesInColumn
+			resize(crop, crop, Size(canvasWidth / nImagesInRow, canvasHeight / nImagesInColumn));
+
+			// Add effects
+			crop = makePanel(crop, nImagesInColumn, nImagesInRow);
+
+			imshow(WINDOW_NAME, crop);
+
+			usleep(1000 * 1000 * secondsOfShowingImage);
+		}
+
+		// Hack for Raspberry Pi
+		if (waitKey(10) > 0) {
+			break;
+		}
+	}
+	return 0;
 }
